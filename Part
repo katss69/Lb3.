@@ -1,0 +1,74 @@
+from flask import Flask, request, jsonify
+from functools import wraps
+
+app = Flask(__name__)
+
+# Просте зберігання користувачів і товарів у програмі
+users = {"admin": "password123"}
+catalog = {
+    1: {"name": "Arabica", "price": 100.25, "size": "500g", "weight": "500g", "color": "brown"},
+    2: {"name": "Robusta", "price": 80.75, "size": "250g", "weight": "250g", "color": "dark brown"}
+}
+
+# Функція для перевірки аутентифікації
+def check_auth(username, password):
+    return users.get(username) == password
+
+def authenticate():
+    return jsonify({"message": "Authentication required"}), 401
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
+
+# GET /items - Повертає список всіх товарів
+@app.route('/items', methods=['GET'])
+@requires_auth
+def get_items():
+    return jsonify(catalog)
+
+# POST /items - Додає новий товар
+@app.route('/items', methods=['POST'])
+@requires_auth
+def add_item():
+    new_id = max(catalog.keys()) + 1
+    data = request.get_json()
+    catalog[new_id] = data
+    return jsonify({"id": new_id, **data}), 201
+
+# GET /items/<id> - Повертає конкретний товар за id
+@app.route('/items/<int:item_id>', methods=['GET'])
+@requires_auth
+def get_item(item_id):
+    item = catalog.get(item_id)
+    if item:
+        return jsonify(item)
+    return jsonify({"message": "Item not found"}), 404
+
+# PUT /items/<id> - Оновлює товар
+@app.route('/items/<int:item_id>', methods=['PUT'])
+@requires_auth
+def update_item(item_id):
+    item = catalog.get(item_id)
+    if item:
+        data = request.get_json()
+        catalog[item_id] = data
+        return jsonify({"id": item_id, **data})
+    return jsonify({"message": "Item not found"}), 404
+
+# DELETE /items/<id> - Видаляє товар
+@app.route('/items/<int:item_id>', methods=['DELETE'])
+@requires_auth
+def delete_item(item_id):
+    item = catalog.pop(item_id, None)
+    if item:
+        return jsonify({"message": "Item deleted"})
+    return jsonify({"message": "Item not found"}), 404
+
+if __name__ == '__main__':
+    app.run(debug=True, port=8000)
